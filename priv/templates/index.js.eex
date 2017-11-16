@@ -12,6 +12,20 @@ const execSync = require('child_process').execSync;
 const spawn = require('child_process').spawn;
 const http = require("http");
 
+const EPMD_STARTED_INDICATOR = 'epmd running - daemon = 0';
+const APPLICATION_STARTED_INDINCATOR = 'SHIM_APPLICATION_STARTED';
+
+const epmdStarted = defer();
+const applicationStarted = defer();
+
+epmdStarted.promise.then(function () {
+  console.log('EPMD_STARTED');
+});
+
+applicationStarted.promise.then(function () {
+  console.log('APPLICATION_STARTED');
+});
+
 execSync('cp -r /var/task/burn/ /tmp/');
 
 function setupEnv(target) {
@@ -27,17 +41,21 @@ console.log('Spawning epmd');
 const epmd = spawn('/tmp/burn/erts-9.0/bin/epmd', ['-d', '-relaxed_command_check', '-port', 40006], { detached: true });
 epmd.stdout.on('data', function (data) {
   console.log("epmd stdout", data.toString());
+
+  if (data.toString().indexOf(EPMD_STARTED_INDICATOR) > -1) {
+    epmdStarted.resolve();
+  }
 });
 epmd.stderr.on('data', function (data) {
   console.log("epmd stderr", data.toString());
 });
 epmd.on('error', function (err) {
   console.log("epmd error", err.toString());
-  reject(err);
+  epmdStarted.eject(err);
 });
 epmd.on('exit', function (code) {
   console.log("epmd exit", code);
-  reject(new Error(`epmd exited with code ${code}`));
+  epmdStarted.reject(new Error(`epmd exited with code ${code}`));
 });
 epmd.unref();
 
@@ -50,6 +68,10 @@ const elixir_proc = spawn('/tmp/burn/bin/'+app, ['foreground'], {
 });
 elixir_proc.stdout.on('data', function (data) {
   console.log('elixir_proc stdout', data.toString());
+
+  if (data.toString().indexOf(APPLICATION_STARTED_INDINCATOR) > -1) {
+    applicationStarted.resolve();
+  }
 });
 elixir_proc.stderr.on('data', function (data) {
   console.log('elixir_proc stderr', data.toString());
@@ -114,4 +136,17 @@ exports.handler = function(event, context, callback) {
   });
 
   request.end(body);
+}
+
+function defer() {
+  var resolve, reject;
+  var promise = new Promise(function() {
+    resolve = arguments[0];
+    reject = arguments[1];
+  });
+  return {
+    resolve: resolve,
+    reject: reject,
+    promise: promise
+  };
 }
