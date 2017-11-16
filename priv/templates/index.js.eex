@@ -1,0 +1,127 @@
+'use strict';
+
+const app = '<%= app %>';
+const erts_version = "9.0";
+const PORT = '<%= http_shim_port %>';
+
+const MAX_FAILS = 1;
+const fs = require("fs")
+const version = "0.1.0";
+const exec = require('child_process').exec;
+const execSync = require('child_process').execSync;
+const spawn = require('child_process').spawn;
+const http = require("http");
+
+execSync('cp -r /var/task/burn/ /tmp/');
+
+function setupEnv(target) {
+  target["HOME"] = "/var/task/burn"
+  target["ERL_EPMD_ADDRESS"] = "127.0.0.1";
+  target["LANG"] = "en_US.utf-8";
+  target["LC_ALL"] = "en_US.utf-8";
+  target["PORT"] = PORT
+  return target;
+}
+
+console.log('Spawning epmd');
+const epmd = spawn('/tmp/burn/erts-9.0/bin/epmd', ['-d', '-relaxed_command_check', '-port', 40006], { detached: true });
+epmd.stdout.on('data', function (data) {
+  console.log("epmd stdout", data.toString());
+});
+epmd.stderr.on('data', function (data) {
+  console.log("epmd stderr", data.toString());
+});
+epmd.on('error', function (err) {
+  console.log("epmd error", err.toString());
+  reject(err);
+});
+epmd.on('exit', function (code) {
+  console.log("epmd exit", code);
+  reject(new Error(`epmd exited with code ${code}`));
+});
+epmd.unref();
+
+execSync('sleep 1');
+
+console.log('Spawning elixir_proc');
+const elixir_proc = spawn('/tmp/burn/bin/'+app, ['foreground'], {
+  detached: true,
+  env: setupEnv({})
+});
+elixir_proc.stdout.on('data', function (data) {
+  console.log('elixir_proc stdout', data.toString());
+});
+elixir_proc.stderr.on('data', function (data) {
+  console.log('elixir_proc stderr', data.toString());
+});
+
+elixir_proc.on('error', function(err) {
+  console.log('elixir_proc error', err.stack);
+  reject(err);
+});
+
+elixir_proc.on('exit', function(code) {
+  console.log('elixir_proc exited', code);
+
+  reject(new Error(`elixir_proc exited with code ${code}`));
+});
+
+execSync('sleep 2');
+
+exports.handler = function(event, context, callback) {
+  context.callbackWaitsForEmptyEventLoop = false;
+
+  const body = JSON.stringify(event);
+
+  const request = http.request({
+    hostname: 'localhost',
+    port: PORT,
+    path: '/',
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body)
+    }
+  }, function (response) {
+    const statusCode = response.statusCode;
+    const contentType = response.headers['content-type'];
+
+    if (statusCode !== 200) {
+      return callback(new Error(`Request Failed.\n Status Code: ${statusCode}`));
+    }
+
+    const buffers = [];
+    response.on('data', function (chunk) {
+      buffers.push(chunk);
+    });
+    response.on('end', () => {
+      try {
+        let responseBody = Buffer.concat(buffers).toString('utf8');
+        if (contentType.indexOf('application/json') > -1) responseBody = JSON.parse(responseBody);
+        return callback(null, responseBody);
+      } catch (err) {
+        console.error(err.stack);
+        callback(err);
+      }
+    });
+  });
+
+  request.on('error', (err) => {
+    console.error(err.stack);
+    callback(err);
+  });
+
+  request.end(body);
+}
+
+function delay(ms) {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+
+function delayed(ms) {
+  return function() {
+    return delay(ms);
+  };
+}
