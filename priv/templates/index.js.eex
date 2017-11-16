@@ -18,15 +18,21 @@ const APPLICATION_STARTED_INDINCATOR = 'SHIM_APPLICATION_STARTED';
 const epmdStarted = defer();
 const applicationStarted = defer();
 
+function log() {
+  console.log.apply(console, ['NODE_ELIXIR_SHIM'].concat(Array.prototype.slice.call(arguments)));
+}
+
 epmdStarted.promise.then(function () {
-  console.log('EPMD_STARTED');
+  log('EPMD_STARTED');
 });
 
 applicationStarted.promise.then(function () {
-  console.log('APPLICATION_STARTED');
+  log('APPLICATION_STARTED');
 });
 
-execSync('cp -r /var/task/burn/ /tmp/');
+if (process.env.NODE_ENV !== 'test') {
+  execSync('cp -r /var/task/burn/ /tmp/');
+}
 
 function setupEnv(target) {
   target["HOME"] = "/var/task/burn"
@@ -37,55 +43,59 @@ function setupEnv(target) {
   return target;
 }
 
-console.log('Spawning epmd');
+log('Spawning epmd');
 const epmd = spawn('/tmp/burn/erts-9.0/bin/epmd', ['-d', '-relaxed_command_check', '-port', 40006], { detached: true });
 epmd.stdout.on('data', function (data) {
-  console.log("epmd stdout", data.toString());
+  log("epmd stdout", data.toString());
 
   if (data.toString().indexOf(EPMD_STARTED_INDICATOR) > -1) {
     epmdStarted.resolve();
   }
 });
 epmd.stderr.on('data', function (data) {
-  console.log("epmd stderr", data.toString());
+  log("epmd stderr", data.toString());
+
+  if (data.toString().indexOf(EPMD_STARTED_INDICATOR) > -1) {
+    epmdStarted.resolve();
+  }
 });
 epmd.on('error', function (err) {
-  console.log("epmd error", err.toString());
-  epmdStarted.eject(err);
+  log("epmd error", err.toString());
+  epmdStarted.reject(err);
 });
 epmd.on('exit', function (code) {
-  console.log("epmd exit", code);
+  log("epmd exit", code);
   epmdStarted.reject(new Error(`epmd exited with code ${code}`));
 });
 epmd.unref();
 
 execSync('sleep 1');
 
-console.log('Spawning elixir_proc');
+log('Spawning elixir_proc');
 const elixir_proc = spawn('/tmp/burn/bin/'+app, ['foreground'], {
   detached: true,
   env: setupEnv({})
 });
 elixir_proc.stdout.on('data', function (data) {
-  console.log('elixir_proc stdout', data.toString());
+  log('elixir_proc stdout', data.toString());
 
   if (data.toString().indexOf(APPLICATION_STARTED_INDINCATOR) > -1) {
     applicationStarted.resolve();
   }
 });
 elixir_proc.stderr.on('data', function (data) {
-  console.log('elixir_proc stderr', data.toString());
+  log('elixir_proc stderr', data.toString());
 });
 
 elixir_proc.on('error', function(err) {
-  console.log('elixir_proc error', err.stack);
-  reject(err);
+  log('elixir_proc error', err.stack);
+  applicationStarted.reject(err);
 });
 
 elixir_proc.on('exit', function(code) {
-  console.log('elixir_proc exited', code);
+  log('elixir_proc exited', code);
 
-  reject(new Error(`elixir_proc exited with code ${code}`));
+  applicationStarted.reject(new Error(`elixir_proc exited with code ${code}`));
 });
 
 execSync('sleep 2');
@@ -95,7 +105,7 @@ exports.handler = function(event, context, callback) {
 
   const body = JSON.stringify(event);
 
-  console.log('Proxying request to elixir http server');
+  log('Proxying request to elixir http server');
   const request = http.request({
     hostname: 'localhost',
     port: PORT,
@@ -121,7 +131,7 @@ exports.handler = function(event, context, callback) {
       try {
         let responseBody = Buffer.concat(buffers).toString('utf8');
         if (contentType.indexOf('application/json') > -1) responseBody = JSON.parse(responseBody);
-        console.log('Proxy response', responseBody);
+        log('Proxy response', responseBody);
         return callback(null, responseBody);
       } catch (err) {
         console.error(err.stack);
