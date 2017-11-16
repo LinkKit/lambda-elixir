@@ -7,15 +7,24 @@ defmodule Mix.Tasks.Lambda.Package do
   use Mix.Config
 
   def run(args) do
+    {opts, _args, _} = OptionParser.parse(args, switches: [umbrella: :boolean])
+
+    umbrella = opts[:umbrella]
     app = Mix.Project.config[:app]
+    app_path = File.cwd!
+    #umbrella_path = args
+    IO.puts Path.expand(Path.join(app_path, "../.."))
+
     version = Mix.Project.config[:version]
     build_path = Mix.Project.config[:build_path]
-    config = Mix.Config.read!(Mix.Project.config[:config_path])
     release_path = "#{build_path}/#{Mix.env}/rel/#{app}"
     deploy_path = "./deploy"
+    docker_home = if umbrella do Path.expand(Path.join(app_path, "../..")) else app_path end
 
     Mix.shell.info "Building release"
-    dockerCmd = "docker run --rm -v $PWD:/home -e MIX_ENV=#{Mix.env} linkkit/lambda-elixir-builder mix release --env=prod"
+    dockerBase = "docker run --rm -v #{docker_home}:/home -e MIX_ENV=#{Mix.env} linkkit/lambda-elixir-builder"
+    dockerCmd = if umbrella do "#{dockerBase} sh -c \"cd apps/#{app} && mix release --env=prod\"" else "#{dockerBase} mix release --env=prod" end
+    IO.puts dockerCmd
     {dockerOut, dockerCode} = System.cmd("/bin/sh", ["-c", dockerCmd], env: [{"MIX_ENV", to_string(Mix.env)}])
 
     if (dockerCode != 0) do
