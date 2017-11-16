@@ -74,7 +74,7 @@ execSync('sleep 1');
 log('Spawning elixir_proc');
 const elixir_proc = spawn('/tmp/burn/bin/'+app, ['foreground'], {
   detached: true,
-  env: setupEnv({})
+  env: setupEnv(process.env)
 });
 elixir_proc.stdout.on('data', function (data) {
   log('elixir_proc stdout', data.toString());
