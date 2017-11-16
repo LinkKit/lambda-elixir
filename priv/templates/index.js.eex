@@ -73,6 +73,7 @@ exports.handler = function(event, context, callback) {
 
   const body = JSON.stringify(event);
 
+  console.log('Proxying request to elixir http server');
   const request = http.request({
     hostname: 'localhost',
     port: PORT,
