@@ -41,7 +41,7 @@ epmd.on('exit', function (code) {
 });
 epmd.unref();
 
-execSync('sleep 2');
+execSync('sleep 1');
 
 console.log('Spawning elixir_proc');
 const elixir_proc = spawn('/tmp/burn/bin/'+app, ['foreground'], {
@@ -99,6 +99,7 @@ exports.handler = function(event, context, callback) {
       try {
         let responseBody = Buffer.concat(buffers).toString('utf8');
         if (contentType.indexOf('application/json') > -1) responseBody = JSON.parse(responseBody);
+        console.log('Proxy response', responseBody);
         return callback(null, responseBody);
       } catch (err) {
         console.error(err.stack);
@@ -113,16 +114,4 @@ exports.handler = function(event, context, callback) {
   });
 
   request.end(body);
-}
-
-function delay(ms) {
-  return new Promise(function (resolve) {
-    setTimeout(resolve, ms);
-  });
-}
-
-function delayed(ms) {
-  return function() {
-    return delay(ms);
-  };
 }
