@@ -120,10 +120,6 @@ exports.handler = function(event, context, callback) {
       const statusCode = response.statusCode;
       const contentType = response.headers['content-type'];
 
-      if (statusCode !== 200) {
-        return callback(new Error(`Request Failed.\n Status Code: ${statusCode}`));
-      }
-
       const buffers = [];
       response.on('data', function (chunk) {
         buffers.push(chunk);
@@ -131,7 +127,12 @@ exports.handler = function(event, context, callback) {
       response.on('end', () => {
         try {
           let responseBody = Buffer.concat(buffers).toString('utf8');
+          if (statusCode !== 200) {
+            return callback(new Error(`Request Failed.\n Status Code: ${statusCode}\n Body: ${responseBody}`));
+          }
+
           if (contentType.indexOf('application/json') > -1) responseBody = JSON.parse(responseBody);
+
           log('Proxy response', responseBody);
           return callback(null, responseBody);
         } catch (err) {
