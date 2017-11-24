@@ -18,6 +18,12 @@ const APPLICATION_STARTED_INDINCATOR = 'SHIM_APPLICATION_STARTED';
 const epmdStarted = defer();
 const applicationStarted = defer();
 
+function restart(message) {
+  console.error('Critical error detected, attempted to force restart of container:');
+  console.error(message || 'Unknown reason');
+  process.exit(1);
+}
+
 function log() {
   console.log.apply(console, ['NODE_ELIXIR_SHIM'].concat(Array.prototype.slice.call(arguments)));
 }
@@ -84,7 +90,10 @@ elixir_proc.stdout.on('data', function (data) {
   }
 });
 elixir_proc.stderr.on('data', function (data) {
-  log('elixir_proc stderr', data.toString());
+  data = data.toString();
+  log('elixir_proc stderr', data);
+
+  if (data.indexOf('Fatal error') > -1) return restart('Fatal error in elixir process');
 });
 
 elixir_proc.on('error', function(err) {
@@ -145,6 +154,7 @@ exports.handler = function(event, context, callback) {
     request.on('error', (err) => {
       console.error(err.stack);
       callback(err);
+      restart('Elixir http shim unreachable ' + err.message);
     });
 
     request.end(body);
