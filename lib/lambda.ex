@@ -43,7 +43,7 @@ defmodule Mix.Tasks.Lambda.Package do
     #end
 
     Mix.shell.info "Generating index.js shim"
-    index_template_path = Path.join(["#{:code.priv_dir(:lambda)}", "templates", "index.js.eex"])
+    index_template_path = Path.join(["#{:code.priv_dir(:lambda_shim)}", "templates", "index.js.eex"])
     index_contents = EEx.eval_file(index_template_path, [
       app: app,
       http_shim_port: Application.get_env(app, :http_shim_port)
