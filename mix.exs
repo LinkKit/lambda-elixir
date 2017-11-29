@@ -16,7 +16,7 @@ defmodule Lambda.Mixfile do
     ]
   end
 
-  defp version, do: "1.2.1"
+  defp version, do: "1.2.2"
 
   defp app, do: :lambda_shim
 
